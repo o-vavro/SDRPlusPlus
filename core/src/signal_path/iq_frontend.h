@@ -20,7 +20,7 @@ public:
         NUTTALL
     };
 
-    void init(dsp::stream<dsp::complex_t>* in, double sampleRate, bool buffering, int decimRatio, bool dcBlocking, int fftSize, double fftRate, FFTWindow fftWindow, float* (*acquireFFTBuffer)(void* ctx), void (*releaseFFTBuffer)(void* ctx), void* fftCtx);
+    void init(dsp::stream<dsp::complex_t>* in, double sampleRate, bool buffering, int decimRatio, bool dcBlocking, int fftSize, double fftRate, FFTWindow fftWindow, float* (*acquireFFTBuffer)(void* ctx), void (*releaseFFTBuffer)(void* ctx), float* (*acquireSCFBuffer)(void* ctx), void (*releaseSCFBuffer)(void* ctx), void* fftCtx);
 
     void setInput(dsp::stream<dsp::complex_t>* in);
     void setSampleRate(double sampleRate);
@@ -41,6 +41,8 @@ public:
     void setFFTRate(double rate);
     void setFFTWindow(FFTWindow fftWindow);
 
+    void setSCFFrameSize(int size);
+
     void flushInputBuffer();
 
     void start();
@@ -50,7 +52,9 @@ public:
 
 protected:
     static void handler(dsp::complex_t* data, int count, void* ctx);
+    static void handlerScf(dsp::complex_t* data, int count, void* ctx);
     void updateFFTPath(bool updateWaterfall = false);
+    void updateSCFPath(bool updateWaterfall = false);
 
     static inline double genDCBlockRate(double sampleRate) {
         return 50.0 / sampleRate;
@@ -79,6 +83,10 @@ protected:
     dsp::buffer::Reshaper<dsp::complex_t> reshape;
     dsp::sink::Handler<dsp::complex_t> fftSink;
 
+    dsp::stream<dsp::complex_t> scfIn;
+    dsp::buffer::Reshaper<dsp::complex_t> scfReshape;
+    dsp::sink::Handler<dsp::complex_t> scfSink;
+
     // VFOs
     std::map<std::string, dsp::stream<dsp::complex_t>*> vfoStreams;
     std::map<std::string, dsp::channel::RxVFO*> vfos;
@@ -91,14 +99,26 @@ protected:
     FFTWindow _fftWindow;
     float* (*_acquireFFTBuffer)(void* ctx);
     void (*_releaseFFTBuffer)(void* ctx);
+    float* (*_acquireSCFBuffer)(void* ctx);
+    void (*_releaseSCFBuffer)(void* ctx);
     void* _fftCtx;
+
+    // SCF parameters
+    int _frameSize;
 
     // Processing data
     int _nzFFTSize;
     float* fftWindowBuf;
+    float* scfWindowBuf;
+    std::vector<dsp::complex_t *> scfShiftBufs;
     fftwf_complex *fftInBuf, *fftOutBuf;
-    fftwf_plan fftwPlan;
+    fftwf_complex *scfFftInBuf, *scfFftOutBuf;
+    fftwf_plan fftwPlan, scfPlan;
     float* fftDbOut;
+    dsp::complex_t *scfShiftOutBuf;
+    float *scfRealOutBuf, *scfImagOutBuf; 
+    size_t *fftFrameIdx;
+    dsp::complex_t *_scd;
 
     double effectiveSr;
 

@@ -12,6 +12,8 @@
 
 namespace displaymenu {
     bool showWaterfall;
+    int waterfallMode;
+    bool scfVisible = false;
     bool fullWaterfallUpdate = true;
     int colorMapId = 0;
     std::vector<std::string> colorMapNames;
@@ -56,6 +58,11 @@ namespace displaymenu {
 
     int fftSizeId = 0;
 
+    enum WaterfallModes {
+        WATERFALL_MODE = 0,
+        SCF_MODE = 1
+    };
+
     const IQFrontEnd::FFTWindow fftWindowList[] = {
         IQFrontEnd::FFTWindow::RECTANGULAR,
         IQFrontEnd::FFTWindow::BLACKMAN,
@@ -92,7 +99,7 @@ namespace displaymenu {
 
         fftSizeId = 3;
         int fftSize = core::configManager.conf["fftSize"];
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 10; i++) {
             if (fftSize == FFTSizes[i]) {
                 fftSizeId = i;
                 break;
@@ -146,6 +153,26 @@ namespace displaymenu {
         if (ImGui::Checkbox("Show Waterfall##_sdrpp", &showWaterfall)) {
             setWaterfallShown(showWaterfall);
         }
+
+        ImGui::BeginGroup();
+        ImGui::Columns(2, "ShowWaterfallColumns##_sdrpp", false);
+        if (ImGui::RadioButton("Waterfall##_waterfall_mode_sdrpp", waterfallMode == WATERFALL_MODE)) {
+            waterfallMode = WATERFALL_MODE;
+            gui::waterfall.setWaterfallMode(waterfallMode);
+            core::configManager.acquire();
+            core::configManager.conf["waterfallMode"] = waterfallMode;
+            core::configManager.release(true);
+        }
+        ImGui::NextColumn();
+        if (ImGui::RadioButton("SCF##_waterfall_mode_sdrpp", waterfallMode == SCF_MODE)) {
+            waterfallMode = SCF_MODE;
+            gui::waterfall.setWaterfallMode(waterfallMode);
+            core::configManager.acquire();
+            core::configManager.conf["waterfallMode"] = waterfallMode;
+            core::configManager.release(true);
+        }
+        ImGui::Columns(1, "EndShowWaterfallColumns##_sdrpp", false);
+        ImGui::EndGroup();
 
         if (ImGui::Checkbox("Full Waterfall Update##_sdrpp", &fullWaterfallUpdate)) {
             gui::waterfall.setFullWaterfallUpdate(fullWaterfallUpdate);

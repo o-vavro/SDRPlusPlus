@@ -10,6 +10,8 @@
 
 #define WATERFALL_RESOLUTION 1000000
 
+#define ENABLE_SCF
+
 namespace ImGui {
     class WaterfallVFO {
     public:
@@ -86,9 +88,16 @@ namespace ImGui {
 
         void init();
 
+        void setWaterfallMode(int mode);
+
         void draw();
         float* getFFTBuffer();
         void pushFFT();
+
+#ifdef ENABLE_SCF
+        float* getSCFBuffer();
+        void setSCF();
+#endif
 
         void updatePallette(float colors[][3], int colorCount);
         void updatePalletteFromArray(float* colors, int colorCount);
@@ -134,6 +143,10 @@ namespace ImGui {
         int getFFTHeight();
 
         void setRawFFTSize(int size);
+
+#ifdef ENABLE_SCF
+        void setRawSCFSize(int size);
+#endif
 
         void setFullWaterfallUpdate(bool fullUpdate);
 
@@ -211,6 +224,14 @@ namespace ImGui {
             _BANDPLAN_POS_COUNT
         };
 
+#ifdef ENABLE_SCF
+        enum {
+            WATERFALL_MODE = 0,
+            SCF_MODE = 1,
+            _WATERFALL_MODE_COUNT
+        };
+#endif
+
         ImVec2 fftAreaMin;
         ImVec2 fftAreaMax;
         ImVec2 freqAreaMin;
@@ -219,7 +240,7 @@ namespace ImGui {
         ImVec2 wfMax;
 
     private:
-        void drawWaterfall();
+        void drawWaterfall(int mode);
         void drawFFT();
         void drawVFOs();
         void drawBandPlan();
@@ -227,7 +248,9 @@ namespace ImGui {
         void onPositionChange();
         void onResize();
         void updateWaterfallFb();
+        void updateScfFb();
         void updateWaterfallTexture();
+        void updateScfTexture();
         void updateAllVFOs(bool checkRedrawRequired = false);
         bool calculateVFOSignalInfo(float* fftLine, WaterfallVFO* vfo, float& strength, float& snr);
 
@@ -245,11 +268,15 @@ namespace ImGui {
         ImGuiWindow* window;
 
         GLuint textureId;
+        GLuint textureScfId;
 
         std::recursive_mutex buf_mtx;
         std::recursive_mutex latestFFTMtx;
         std::mutex texMtx;
         std::mutex smoothingBufMtx;
+
+        std::recursive_mutex buf_scf_mtx;
+        std::recursive_mutex latestSCFMtx;
 
         float vRange;
 
@@ -290,13 +317,22 @@ namespace ImGui {
         int currentFFTLine = 0;
         int fftLines = 0;
 
-        uint32_t* waterfallFb;
+        uint32_t* waterfallFb = NULL;
+
+#ifdef ENABLE_SCF
+        int rawSCFSize;
+        float* rawSCF = NULL;
+        float* latestSCF = NULL;
+
+        uint32_t* scfFb = NULL;
+#endif
 
         bool draggingFW = false;
         int FFTAreaHeight;
         int newFFTAreaHeight;
 
         bool waterfallVisible = true;
+        int waterfallMode = 0;
         bool bandplanVisible = false;
 
         bool _fullUpdate = true;

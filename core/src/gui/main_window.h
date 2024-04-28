@@ -22,6 +22,9 @@ public:
     static float* acquireFFTBuffer(void* ctx);
     static void releaseFFTBuffer(void* ctx);
 
+    static float* acquireSCFBuffer(void* ctx);
+    static void releaseSCFBuffer(void* ctx);
+
     // TODO: Replace with it's own class
     void setVFO(double freq);
 
