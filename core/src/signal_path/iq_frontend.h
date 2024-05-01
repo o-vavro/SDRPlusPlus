@@ -116,9 +116,10 @@ protected:
     fftwf_plan fftwPlan, scfPlan;
     float* fftDbOut;
     dsp::complex_t *scfShiftOutBuf;
-    float *scfRealOutBuf, *scfImagOutBuf; 
+    dsp::complex_t *scfMoved;
     size_t *fftFrameIdx;
     dsp::complex_t *_scd;
+    size_t* fftMovIdx;
 
     double effectiveSr;
 

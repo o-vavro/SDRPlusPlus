@@ -670,17 +670,14 @@ namespace ImGui {
         waterfallUpdate = true;
 
         if (rawSCF != NULL) {
-            int height = std::min(waterfallHeight, rawSCFSize);
-            int numRepeat = waterfallHeight / height;
-            for (int i = 0; i < height; ++i) {
+            float scale = float(rawSCFSize) / waterfallHeight;
+            for (int i = 0; i < waterfallHeight; ++i) {
                 drawDataSize = (viewBandwidth / wholeBandwidth) * rawSCFSize;
                 drawDataStart = (((double)rawSCFSize / 2.0) * (offsetRatio + 1)) - (drawDataSize / 2);
-                doZoom(drawDataStart, drawDataSize, rawSCFSize, dataWidth, &rawSCF[i * rawSCFSize], tempData);
+                doZoom(drawDataStart, drawDataSize, rawSCFSize, dataWidth, &rawSCF[int(i * scale) * rawSCFSize], tempData);
                 for (int j = 0; j < dataWidth; ++j) {
                     pixel = (std::clamp<float>(tempData[j], waterfallMin, waterfallMax) - waterfallMin) / dataRange;
-                    for (int k = 0; k < numRepeat; ++k) {
-                        scfFb[i * numRepeat * dataWidth + k * dataWidth + j] = waterfallPallet[(int)(pixel * (WATERFALL_RESOLUTION - 1))];
-                    }
+                    scfFb[i * dataWidth + j] = waterfallPallet[(int)(pixel * (WATERFALL_RESOLUTION - 1))];
                 }
             }
         }
@@ -1040,20 +1037,16 @@ namespace ImGui {
         int drawDataSize = (viewBandwidth / wholeBandwidth) * rawSCFSize;
         int drawDataStart = (((double)rawSCFSize / 2.0) * (offsetRatio + 1)) - (drawDataSize / 2);
 
-        int height = std::min(waterfallHeight, rawSCFSize);
-        int numRepeat = waterfallHeight / height;
+        float scale = float(rawSCFSize) / waterfallHeight;
         if (waterfallVisible) {
-            for (size_t i = 0; i < height; ++i) {
-                doZoom(drawDataStart, drawDataSize, rawSCFSize, dataWidth, &rawSCF[rawSCFSize * i], latestSCF);
-                //memmove(&scfFb[dataWidth], scfFb, dataWidth * (waterfallHeight - 1) * sizeof(uint32_t));
+            for (size_t i = 0; i < waterfallHeight; ++i) {
+                doZoom(drawDataStart, drawDataSize, rawSCFSize, dataWidth, &rawSCF[rawSCFSize * int(i * scale)], latestSCF);
                 float pixel;
                 float dataRange = waterfallMax - waterfallMin;
                 for (int j = 0; j < dataWidth; ++j) {
                     pixel = (std::clamp<float>(latestSCF[j], waterfallMin, waterfallMax) - waterfallMin) / dataRange;
                     int id = (int)(pixel * (WATERFALL_RESOLUTION - 1));
-                    for (int k = 0; k < numRepeat; ++k) {
-                        scfFb[i * numRepeat * dataWidth + k * dataWidth + j] = waterfallPallet[id];
-                    }
+                    scfFb[i * dataWidth + j] = waterfallPallet[id];
                 }
                 waterfallUpdate = true;
             }

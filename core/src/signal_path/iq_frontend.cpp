@@ -22,8 +22,7 @@ IQFrontEnd::~IQFrontEnd() {
     fftwf_free(scfFftInBuf);
     fftwf_free(scfFftOutBuf);
 
-    dsp::buffer::free(scfRealOutBuf);
-    dsp::buffer::free(scfImagOutBuf);
+    dsp::buffer::free(scfMoved);
     free(_scd);
 }
 
@@ -38,7 +37,7 @@ void IQFrontEnd::init(dsp::stream<dsp::complex_t>* in, double sampleRate, bool b
     _acquireSCFBuffer = acquireSCFBuffer;
     _releaseSCFBuffer = releaseSCFBuffer;
     _fftCtx = fftCtx;
-    _frameSize = 64;
+    _frameSize = 128;
 
     effectiveSr = _sampleRate / _decimRatio;
 
@@ -94,23 +93,27 @@ void IQFrontEnd::init(dsp::stream<dsp::complex_t>* in, double sampleRate, bool b
         dsp::buffer::free(scfShiftBufs[i]);
     }
     scfShiftBufs.clear();
-
-    // first window - no need to shift
-    scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
-    for (int j = 0; j < _frameSize; j++) { scfShiftBufs[0][j].re = 1.0; scfShiftBufs[0][j].im = 0.0; }
+    //for (int j = 0; j < _frameSize; j++) { scfShiftBufs[0][j].re = 1.0; scfShiftBufs[0][j].im = 0.0; }
     // the rest of the windows
-    for (int i = 1; i < _P; ++i) {
+    for (int i = 0; i < _P; ++i) {
         scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
         for (int j = 0; j < _frameSize; j++) { scfShiftBufs[i][j].re = cos(2.0 * M_PI * (float(i)/4) * j); scfShiftBufs[i][j].im = sin(2.0 * M_PI * (float(i)/4) * j); }
     }
 
-    dsp::buffer::free(scfRealOutBuf);
-    scfRealOutBuf = dsp::buffer::alloc<float>(_P * _fftSize);
-    dsp::buffer::free(scfImagOutBuf);
-    scfImagOutBuf = dsp::buffer::alloc<float>(_P * _fftSize);
+    dsp::buffer::free(scfShiftOutBuf);
+    scfShiftOutBuf = dsp::buffer::alloc<dsp::complex_t>(_frameSize);
+
+    dsp::buffer::free(scfMoved);
+    scfMoved = dsp::buffer::alloc<dsp::complex_t>(_P * _fftSize);
+
+    dsp::buffer::free(fftMovIdx);
+    fftMovIdx = dsp::buffer::alloc<size_t>(_frameSize);
+    size_t startIdx = (_frameSize + 1)/2;
+    for(size_t i = startIdx, cnt = 0; i < (_frameSize + startIdx); ++i) {
+        fftMovIdx[cnt++] = i % _frameSize;
+    }
 
     free(_scd);
-    _scd = nullptr;
     _scd = static_cast<dsp::complex_t*>(malloc(_frameSize * _frameSize * sizeof(dsp::complex_t)));
     if (!_scd) {
         flog::info("SCD buffer init failed!");
@@ -123,8 +126,6 @@ void IQFrontEnd::init(dsp::stream<dsp::complex_t>* in, double sampleRate, bool b
     scfFftInBuf = (fftwf_complex*)fftwf_malloc(_frameSize * sizeof(fftwf_complex));
     scfFftOutBuf = (fftwf_complex*)fftwf_malloc(_frameSize * sizeof(fftwf_complex));
     scfPlan = fftwf_plan_dft_1d(_fftSize, scfFftInBuf, scfFftOutBuf, FFTW_FORWARD, FFTW_ESTIMATE);
-
-    scfShiftOutBuf = dsp::buffer::alloc<dsp::complex_t>(_frameSize);
 
     // Clear the rest of the FFT input buffer
     dsp::buffer::clear(fftInBuf, _fftSize - _nzFFTSize, _nzFFTSize);
@@ -342,14 +343,6 @@ void IQFrontEnd::handler(dsp::complex_t* data, int count, void* ctx) {
 
     // Release buffer
     _this->_releaseFFTBuffer(_this->_fftCtx);
-
-    /*float min = std::numeric_limits<float>::max(), max = 0;
-    for(size_t i = 0; i < _this->_frameSize * _this->_frameSize; ++i)
-    {
-        min = std::min(min, fftBuf[i]);
-        max = std::max(max, fftBuf[i]);
-    }
-    flog::info("FFT Min={0} Max={1}", min, max);*/
 }
 
 void IQFrontEnd::handlerScf(dsp::complex_t* data, int count, void* ctx) {
@@ -367,28 +360,25 @@ void IQFrontEnd::handlerScf(dsp::complex_t* data, int count, void* ctx) {
         // shifting
         volk_32fc_x2_multiply_32fc((lv_32fc_t*)_this->scfShiftOutBuf, (lv_32fc_t*)_this->scfFftOutBuf, (lv_32fc_t*)_this->scfShiftBufs[i], _this->_frameSize);
         // split to real/imag
-        volk_32fc_deinterleave_real_32f((float*)(_this->scfRealOutBuf + (i * _this->_frameSize)), (lv_32fc_t*)_this->scfShiftOutBuf, _this->_frameSize);
-        volk_32fc_deinterleave_imag_32f((float*)(_this->scfImagOutBuf + (i * _this->_frameSize)), (lv_32fc_t*)_this->scfShiftOutBuf, _this->_frameSize);
+        //volk_32fc_deinterleave_real_32f((float*)(_this->scfReal + (i * _this->_frameSize)), (lv_32fc_t*)_this->scfShiftOutBuf, _this->_frameSize);
+        //volk_32fc_deinterleave_imag_32f((float*)(_this->scfImag + (i * _this->_frameSize)), (lv_32fc_t*)_this->scfShiftOutBuf, _this->_frameSize);
+        for (size_t j = 0; j < _this->_frameSize; ++j) {
+            _this->scfMoved[j *_P + i] = _this->scfShiftOutBuf[j];
+            //_this->scfMoved[j *_P + i] = _this->scfShiftOutBuf[_this->fftMovIdx[j]];
+        }
     }
 
-    const float tmp_f = float(_this->_frameSize * _P);
+    const float tmpF = float(_this->_frameSize * _P);
     #pragma omp parallel for
     for (long long j = 0; j < static_cast<long long>(_this->_frameSize); j++) {
       dsp::complex_t c;
+      std::vector<dsp::complex_t> scfMulConj;
+      scfMulConj.resize(_P);
+
       for (size_t i = 0; i < _this->_frameSize; i++) {
-        float tmp_r = 0;
-        float tmp_i = 0;
-        for (size_t k = 0; k < _P; k++) {
-          tmp_r += _this->scfRealOutBuf[i*_P+k] * _this->scfRealOutBuf[j*_P+k];
-          tmp_r += _this->scfImagOutBuf[i*_P+k] * _this->scfImagOutBuf[j*_P+k];
-
-          tmp_i -= _this->scfRealOutBuf[i*_P+k] * _this->scfImagOutBuf[j*_P+k];
-          tmp_i += _this->scfImagOutBuf[i*_P+k] * _this->scfRealOutBuf[j*_P+k];
-        }
-        c.re = tmp_r;
-        c.im = tmp_i;
-
-        _this->_scd[j*_this->_frameSize+i] = c / tmp_f;
+        volk_32fc_x2_multiply_conjugate_32fc((lv_32fc_t*)scfMulConj.data(), (lv_32fc_t*)&_this->scfMoved[i*_P], (lv_32fc_t*)&_this->scfMoved[j*_P], _P);
+        volk_32fc_accumulator_s32fc((lv_32fc_t*)&c, (lv_32fc_t*)scfMulConj.data(), _P);
+        _this->_scd[j*_this->_frameSize+i] = c / tmpF;
       }
     }
 
@@ -399,7 +389,6 @@ void IQFrontEnd::handlerScf(dsp::complex_t* data, int count, void* ctx) {
     if(scfBuf)
     {
         volk_32fc_s32f_power_spectrum_32f(scfBuf, (lv_32fc_t*)_this->_scd, _this->_frameSize, _this->_frameSize * _this->_frameSize);
-        //volk_32f_s32f_multiply_32f(scfBuf, scfBuf, 1.0/2.0, _this->_frameSize * _this->_frameSize);
     }
 
     // Release buffer
@@ -457,7 +446,7 @@ void IQFrontEnd::updateFFTPath(bool updateWaterfall) {
     auto _P = ((4 * _fftSize) / _frameSize) - 1;
 
     // first window - no need to shift
-    scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
+    //scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
     // the rest of the windows
     for (int i = 0; i < _P; ++i) {
         scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
@@ -467,12 +456,17 @@ void IQFrontEnd::updateFFTPath(bool updateWaterfall) {
     dsp::buffer::free(scfShiftOutBuf);
     scfShiftOutBuf = dsp::buffer::alloc<dsp::complex_t>(_frameSize);
 
-    dsp::buffer::free(scfRealOutBuf);
-    scfRealOutBuf = dsp::buffer::alloc<float>(_P * _frameSize);
-    dsp::buffer::free(scfImagOutBuf);
-    scfImagOutBuf = dsp::buffer::alloc<float>(_P * _frameSize);
+    dsp::buffer::free(scfMoved);
+    scfMoved = dsp::buffer::alloc<dsp::complex_t>(_P * _fftSize);
 
-    _scd = nullptr;
+    dsp::buffer::free(fftMovIdx);
+    fftMovIdx = dsp::buffer::alloc<size_t>(_frameSize);
+    size_t startIdx = (_frameSize + 1)/2;
+    for(size_t i = startIdx, cnt = 0; i < (_frameSize + startIdx); ++i) {
+        fftMovIdx[cnt++] = i % _frameSize;
+    }
+
+    free(_scd);
     _scd = static_cast<dsp::complex_t*>(malloc(_frameSize * _frameSize * sizeof(dsp::complex_t)));
     if (!_scd) {
         flog::info("SCD buffer init failed!");
@@ -533,7 +527,7 @@ void IQFrontEnd::updateSCFPath(bool updateWaterfall) {
     auto _P = ((4 * _fftSize) / _frameSize) - 1;
 
     // first window - no need to shift
-    scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
+    //scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
     // the rest of the windows
     for (int i = 0; i < _P; ++i) {
         scfShiftBufs.push_back(dsp::buffer::alloc<dsp::complex_t>(_frameSize));
@@ -543,13 +537,17 @@ void IQFrontEnd::updateSCFPath(bool updateWaterfall) {
     dsp::buffer::free(scfShiftOutBuf);
     scfShiftOutBuf = dsp::buffer::alloc<dsp::complex_t>(_frameSize);
 
-    dsp::buffer::free(scfRealOutBuf);
-    scfRealOutBuf = dsp::buffer::alloc<float>(_P * _frameSize);
-    dsp::buffer::free(scfImagOutBuf);
-    scfImagOutBuf = dsp::buffer::alloc<float>(_P * _frameSize);
+    dsp::buffer::free(scfMoved);
+    scfMoved = dsp::buffer::alloc<dsp::complex_t>(_P * _fftSize);
+
+    dsp::buffer::free(fftMovIdx);
+    fftMovIdx = dsp::buffer::alloc<size_t>(_frameSize);
+    size_t startIdx = (_frameSize + 1)/2;
+    for(size_t i = startIdx, cnt = 0; i < (_frameSize + startIdx); ++i) {
+        fftMovIdx[cnt++] = i % _frameSize;
+    }
 
     free(_scd);
-    _scd = nullptr;
     _scd = static_cast<dsp::complex_t*>(malloc(_frameSize * _frameSize * sizeof(dsp::complex_t)));
     if (!_scd) {
         flog::info("SCD buffer init failed!");
