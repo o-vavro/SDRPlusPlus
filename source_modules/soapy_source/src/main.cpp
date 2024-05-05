@@ -155,6 +155,18 @@ private:
 
         SoapySDR::Device* dev = SoapySDR::Device::make(devArgs);
 
+        channelCount = dev->getNumChannels(SOAPY_SDR_RX);
+        txtChanList = "";
+        for (int ch = 0; ch < channelCount; ++ch) {
+            txtChanList += std::to_string(ch) + '\0';
+        }
+        if (channelCount > 1)
+        {
+            for (int ch = 0; ch < channelCount; ++ch) {
+
+            }
+        }
+
         antennaList = dev->listAntennas(SOAPY_SDR_RX, channelId);
         txtAntennaList = "";
         for (const std::string& ant : antennaList) {
@@ -214,6 +226,12 @@ private:
 
         config.acquire();
         if (config.conf["devices"].contains(name)) {
+            if (config.conf["devices"][name].contains("channel")) {
+                channelId = config.conf["devices"][name]["channel"];
+            }
+            else {
+                channelId = 0;
+            }
             if (config.conf["devices"][name].contains("antenna")) {
                 uiAntennaId = config.conf["devices"][name]["antenna"];
             }
@@ -268,6 +286,7 @@ private:
 
     void saveCurrent() {
         json conf;
+        conf["channel"] = channelId;
         conf["sampleRate"] = sampleRate;
         conf["antenna"] = uiAntennaId;
         int i = 0;
@@ -332,7 +351,8 @@ private:
 
         _this->dev->setFrequency(SOAPY_SDR_RX, _this->channelId, _this->freq);
 
-        _this->devStream = _this->dev->setupStream(SOAPY_SDR_RX, "CF32");
+        std::vector<size_t> chan = { static_cast<size_t>(_this->channelId) };
+        _this->devStream = _this->dev->setupStream(SOAPY_SDR_RX, "CF32", chan);
         _this->dev->activateStream(_this->devStream);
         _this->running = true;
         _this->workerThread = std::thread(_worker, _this);
@@ -385,6 +405,16 @@ private:
             config.acquire();
             config.conf["device"] = _this->devList[_this->devId]["label"];
             config.release(true);
+        }
+
+        if (_this->channelCount > 1)
+        {
+            SmGui::LeftLabel("Channel:");
+            SmGui::FillWidth();
+            if (SmGui::Combo(CONCAT("##_ch_select_", _this->name), &_this->channelId, _this->txtChanList.c_str())) {
+
+                _this->saveCurrent();
+            }
         }
 
         if (SmGui::Combo(CONCAT("##_sr_select_", _this->name), &_this->srId, _this->txtSrList.c_str())) {
@@ -500,6 +530,7 @@ private:
     SoapySDR::Kwargs devArgs;
     SoapySDR::Device* dev;
     std::string txtDevList;
+    std::string txtChanList;
     std::string txtSrList;
     std::thread workerThread;
     int devId = -1;

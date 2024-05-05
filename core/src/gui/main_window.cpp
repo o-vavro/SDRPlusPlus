@@ -32,7 +32,7 @@ void MainWindow::init() {
     LoadingScreen::show("Initializing UI");
     gui::waterfall.init();
     gui::waterfall.setRawFFTSize(fftSize);
-    gui::waterfall.setRawSCFSize(128);
+    gui::waterfall.setRawSCFSize(256);
 
     credits::init();
 

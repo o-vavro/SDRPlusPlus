@@ -37,7 +37,7 @@ void IQFrontEnd::init(dsp::stream<dsp::complex_t>* in, double sampleRate, bool b
     _acquireSCFBuffer = acquireSCFBuffer;
     _releaseSCFBuffer = releaseSCFBuffer;
     _fftCtx = fftCtx;
-    _frameSize = 128;
+    _frameSize = 256;
 
     effectiveSr = _sampleRate / _decimRatio;
 
